@@ -1,3 +1,12 @@
+/**
+ * 1. Get the range of records which needs to be extracted from database
+ * 2. Extract the records from given range
+ * 3. For each record 
+ *	  3.1 write record to a file
+ *	  3.2 get commit time stamp and update up to which time data has been captured
+ * 4. Indicate the completion of task by incrementing "completedThread variable
+ */
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;

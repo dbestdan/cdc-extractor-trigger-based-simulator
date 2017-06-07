@@ -94,8 +94,8 @@ public class CheckerRunnable implements Runnable, Config {
 					expirationRatio = ((expirationCount *100) / totalRequest);
 
 					// write both avgStaleness and ExpirationRatio to a file
-					write(stalenessWriter, totalRequest, avgStaleness);
-					write(expirationWriter, totalRequest, expirationRatio);
+					write(stalenessWriter, totalRequest, avgStaleness, staleness);
+					write(expirationWriter, totalRequest, expirationRatio, expirationCount);
 
 					// Indicate that current request has completed
 					synchronized(CoordinatorRunnable.requestInProgress) {
@@ -109,9 +109,9 @@ public class CheckerRunnable implements Runnable, Config {
 
 	}
 
-	public void write(Writer writer, long totalRequest, long avg) {
+	public void write(Writer writer, long totalRequest, long avg, long current) {
 		try {
-			writer.append(totalRequest + "," + avg + "\n");
+			writer.append(totalRequest + "," + avg +  "," + current +","+requestTime+","+CoordinatorRunnable.uptodate.getTime()+"\n");
 			writer.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
