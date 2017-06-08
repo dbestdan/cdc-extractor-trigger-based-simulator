@@ -37,7 +37,9 @@ public class CoordinatorRunnable implements Runnable, Config {
 	private Connection conn = null;
 	private PreparedStatement stmt = null;
 	private ResultSet rs = null;
-	public long maxSeqID = 0L;
+	//public long maxSeqID = 0L;
+	private long changeCount = 0L;
+	private Timestamp checkedRequestTimestamp = null;
 	private BlockingQueue<Task> queue = null;
 	private long sessionEndTime = 0L;
 	public static long sessionStartTime = 0L;
@@ -62,8 +64,12 @@ public class CoordinatorRunnable implements Runnable, Config {
 		this.sessionEndTime = sessionEndTime;
 		try {
 			conn = Client.getConnection();
-			String query = "select max(event_id) from audit.logged_actions where " + "table_name in("
+			//String query = "select max(event_id) from audit.logged_actions where " + "table_name in("
+			//		+ tables.get(System.getProperty("tables")) + ") and "
+			//				+ "pg_xact_commit_timestamp(transaction_id::text::xid) < ?";
+			String query = "select count(*) from audit.logged_actions where " + "table_name in("
 					+ tables.get(System.getProperty("tables")) + ") and "
+							+ "pg_xact_commit_timestamp(transaction_id::text::xid) >= ? and "
 							+ "pg_xact_commit_timestamp(transaction_id::text::xid) < ?";
 			stmt = conn.prepareStatement(query);
 
@@ -94,6 +100,8 @@ public class CoordinatorRunnable implements Runnable, Config {
 		}
 		long time = date.getTime();
 		uptodate = new Timestamp(time);
+		checkedRequestTimestamp = new Timestamp(time);
+
 	}
 
 	@Override
@@ -143,30 +151,29 @@ public class CoordinatorRunnable implements Runnable, Config {
 
 			try {
 				System.out.println("Coordinator RequestTimeStamp " + requestStartTimeStamp);
-				stmt.setTimestamp(1, requestStartTimeStamp);
+				stmt.setTimestamp(1, checkedRequestTimestamp);
+				stmt.setTimestamp(2, requestStartTimeStamp);
 				rs = stmt.executeQuery();
 				rs.next();
-				long tmpMaxSeqID = rs.getLong(1);
+				changeCount = rs.getLong(1);
 				
-				System.out.println("Coordinator maxId " + tmpMaxSeqID);
-				if (tmpMaxSeqID > maxSeqID) {
+				System.out.println("Coordinator changeCount " + changeCount);
+				if (changeCount > 0) {
 					
 					
 					
-					long stepSize = (tmpMaxSeqID - maxSeqID) / threadSize;
+					long limit = (changeCount / threadSize)+threadSize;
+					long offset = 0L;
 					long tmpNextMaxSeqID = 0L;
 					for (int i = 1; i <= threadSize; i++) {
-						if (i == threadSize) {
-							tmpNextMaxSeqID = tmpMaxSeqID;
-							queue.put(new Task(maxSeqID, tmpNextMaxSeqID));
-						} else {
-							tmpNextMaxSeqID = maxSeqID + stepSize;
-							queue.put(new Task(maxSeqID, tmpNextMaxSeqID));
-							maxSeqID = tmpNextMaxSeqID;
-						}
-
+						queue.put(new Task(checkedRequestTimestamp, requestStartTimeStamp, limit, offset));
 						// initiate worker thread
 						threads.add(new Thread(new WorkerRunnable(i, queue)));
+						offset = offset + limit +1;
+						System.out.println("Coordinator Offset: " + offset);
+						
+						System.out.println("Coordinator limit: " + limit);
+
 
 					}
 
@@ -182,7 +189,7 @@ public class CoordinatorRunnable implements Runnable, Config {
 					System.out.println("execution: " + CoordinatorRunnable.requestInProgress);
 					System.out.println("request Start Time " + requestStartTime);
 					System.out.println("expiration Time: " + requestExpirationTime);
-					maxSeqID = tmpMaxSeqID;
+					checkedRequestTimestamp = requestStartTimeStamp;
 
 					// end latency clock
 					long requestEndTime = System.currentTimeMillis();

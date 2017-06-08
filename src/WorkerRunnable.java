@@ -62,8 +62,10 @@ public class WorkerRunnable implements Runnable, Config {
 		ResultSet rs = null;
 		ResultSet commitTimeResultSet = null;
 		try {
-			String query = "select * from audit.logged_actions " + "where event_id > ? and event_id <= ? "
-					+ "and table_name in (" + tables.get(System.getProperty("tables")) + ")";
+			String query = "select * from audit.logged_actions where " + "table_name in("
+					+ tables.get(System.getProperty("tables")) + ") and "
+					+ "pg_xact_commit_timestamp(transaction_id::text::xid) >= ? and "
+					+ "pg_xact_commit_timestamp(transaction_id::text::xid) < ? limit ? offset ?";
 			stmt = conn.prepareStatement(query);
 		} catch (SQLException e1) {
 			e1.printStackTrace();
@@ -72,9 +74,11 @@ public class WorkerRunnable implements Runnable, Config {
 		try {
 
 			Task task = queue.take();
-
-			stmt.setLong(1, task.getMinSeqID());
-			stmt.setLong(2, task.getMaxSeqID());
+			
+			stmt.setTimestamp(1, task.getStartTime());
+			stmt.setTimestamp(2, task.getEndTime());
+			stmt.setLong(3, task.getLimit());
+			stmt.setLong(4, task.getOffset());
 			rs = stmt.executeQuery();
 
 			while (rs.next()) {
